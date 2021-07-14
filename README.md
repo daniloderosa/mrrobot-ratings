@@ -19,4 +19,4 @@ Feedback is very welcome via [mail](mailto:danilo.derosa.dd@gmail.com) or [Twitt
 
 ### Code 
 
-The code is available [here](https://github.com/daniloderosa/mrrobot-ratings/blob/main/MrRobot.Rmd). It's entirely made with R and ggplot2: not a single touch on Adobe Illustrator :) 
+The code is available [here](https://github.com/daniloderosa/mrrobot-ratings/blob/main/MrRobot.Rmd). It's entirely made with R and `ggplot2`: not a single touch on Adobe Illustrator :) 
