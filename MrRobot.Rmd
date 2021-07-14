@@ -1,0 +1,165 @@
+---
+title: "Mr Robot Ratings by IMDb"
+author: "Danilo De Rosa"
+date: "2021/07/14"
+output:
+  html_document:
+  theme: paper
+highlight: kate
+editor_options:
+  chunk_output_type: console
+---
+
+This plot is heavily inspired by Cédric Sherer's "The Office by IMDB via data.world",
+a plot made for #TidyTuesday (2020/12), available here: https://github.com/z3tt/TidyTuesday/tree/master/plots/2020_12. 
+
+Most of the code below is based on Cédric's code, with some little adjustments to make it look nice for Mr Robot.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r load-data}
+library(tidyverse)
+library(cowplot)
+library(showtext)
+
+#Dataset can be downloaded at https://datasets.imdbws.com
+episodes <- read_tsv("episode_series.tsv")
+
+mr_robot <- episodes %>% filter(parentTconst == "tt4158110")
+
+ratings <- read_tsv("rating_episodes.tsv")
+
+mr_robot_ratings <- left_join(mr_robot, ratings)
+```
+
+
+```{r set-theme}
+
+#setting the theme for the plot
+theme_set(theme_minimal(base_family = "Roboto Mono")) 
+theme_update(plot.background = element_rect(fill = "#262626", color = "#262626"), #color based on one of the Mr Robot's palette
+             panel.background = element_rect(fill = NA, color = NA),
+             panel.border = element_rect(fill = NA, color = NA),
+             panel.grid.major.y = element_line(color = "#FFFFFF50"),
+             panel.grid.major.x = element_blank(),
+             panel.grid.minor = element_blank(),
+             axis.text.x = element_blank(),
+             axis.text.y = element_text(size = 10, color = "white"),
+             axis.ticks = element_blank(),
+             axis.title.y = element_text(size = 13, 
+                                         margin = margin(r = 10),
+                                         color = "#D9303E"),
+             legend.title = element_text(size = 9, color = "white"),
+             plot.caption = element_text(family = "MrRobot",
+                                         size = 10,
+                                         color = "#D9303E",
+                                         face = "bold",
+                                         hjust = .5,
+                                         margin = margin(5, 0, 20, 0)),
+             plot.margin = margin(10, 25, 10, 25))
+```
+
+```{r data-prep}
+mr_robot_ratings_filtered <- mr_robot_ratings %>% 
+  filter(seasonNumber != "\\N") %>% #removing the non-episode row (I think this is the serie's average)
+  select(-tconst, -parentTconst, season = seasonNumber, episode = episodeNumber,
+         imdb_rating = averageRating, total_votes = numVotes) %>% #renaming
+  mutate(season = as.numeric(season), #setting the right type
+         episode = as.numeric(episode))
+
+mr_robot_avg <- mr_robot_ratings_filtered %>% 
+  arrange(season, episode) %>% 
+  mutate(episode_id = row_number()) %>% 
+  group_by(season) %>% 
+  mutate(
+    avg = mean(imdb_rating),
+    episode_mod = episode_id + (4 * season),
+    mid = mean(episode_mod)
+  ) %>% 
+  ungroup() %>% 
+  mutate(season = factor(season))
+
+mr_robot_lines <- mr_robot_avg %>% 
+  group_by(season) %>% 
+  summarize(start_x = min(episode_mod) - 2.5,
+    end_x = max(episode_mod) + 2.5,
+    y = unique(avg)) %>% 
+  pivot_longer(cols = c(start_x, end_x),
+    names_to = "type",
+    values_to = "x") %>% 
+  mutate(x_group = if_else(type == "start_x", x + .1, x - .1),
+    x_group = if_else(type == "start_x" & x == min(x), x_group - .1, x_group),
+    x_group = if_else(type == "end_x" & x == max(x), x_group + .1, x_group))
+```
+
+```{r plot, message=FALSE, warning=FALSE}
+p <- mr_robot_avg %>% 
+  ggplot(aes(episode_mod, imdb_rating)) +
+    geom_hline(data = tibble(y = 7:10),
+               aes(yintercept = y),
+               color = "grey10",
+               alpha = .5,
+               size = .5) +
+    geom_segment(aes(xend = episode_mod,
+                     yend = avg, 
+                     color = season, 
+                     color = after_scale(colorspace::lighten(color, .2)))) +
+    geom_line(data = mr_robot_lines,
+              aes(x, y),
+              color = "grey40") +
+    geom_line(data = mr_robot_lines,
+              aes(x_group, y, 
+                  color = season, 
+                  color = after_scale(colorspace::darken(color, .2))),
+              size = 2.5) +
+    geom_point(aes(size = total_votes,
+                   color = season)) +
+    geom_label(aes(mid, 10.12,
+                   label = glue::glue(" Season {season} "),
+                   color = season, 
+                   color = after_scale(colorspace::darken(color, .2))),
+               fill = NA,
+               family = "MrRobot",
+               fontface = "bold",
+               label.padding = unit(.2, "lines"),
+               label.r = unit(.25, "lines"),
+               label.size = .5) +
+    scale_x_continuous(expand = c(.015, .015)) +
+    scale_y_continuous(expand = c(.03, .03),
+                       limits = c(6.5, 10.2),
+                       breaks = seq(6.5, 10, by = .5),
+                       sec.axis = dup_axis(name = NULL)) +
+    scale_color_manual(values = c("#FF992F", "#149CFF", "#D2C282", "#AA4546"),
+                       guide = F) +
+    scale_size_binned(name = "Votes per Episode",
+                      range = c(.3, 3)) +
+    labs(x = NULL, y = "IMDb Rating",
+        caption = "Visualization by Danilo De Rosa - Data by IMDb") +
+    guides(size = guide_bins(show.limits = T,
+                             direction = "horizontal",
+                             title.position = "top",
+                             title.hjust = .5,
+                             override.aes = list(color = "white"),
+                             axis.colour = "white")) +
+    theme(legend.position = c(.5, .085),
+          legend.key.width = unit(2, "lines"),
+          legend.text = element_text(color = "white"))
+
+logo <- png::readPNG(here::here("mr_robot.png"))
+
+ggdraw(p) +
+  draw_image(logo, x = -.35, y = -.34, scale = .12)
+
+ggsave(here::here("MrRobot.pdf"), 
+       width = 15, height = 9, device = cairo_pdf) 
+
+path <- here::here("MrRobot")
+
+pdftools::pdf_convert(pdf = glue::glue("{path}.pdf"), 
+                      filenames = glue::glue("{path}.png"),
+                      format = "png", dpi = 450)
+```
+
